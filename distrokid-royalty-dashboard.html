@@ -1,0 +1,1138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NMF Royalty Dashboard</title>
+
+  <!--
+    NEON MUSCLE FIBER — STREAMING ROYALTY DASHBOARD
+    Single-file version. Open this file in any browser (needs internet for the libraries + world map).
+    To edit: open in any text editor (Notepad, TextEdit, VS Code), change the code in the
+    <script type="text/babel"> block at the bottom, save, and refresh the browser.
+  -->
+
+  <style>
+    /* Removes the browser's default page margin (the "band" around the dashboard) */
+    html, body { margin: 0; padding: 0; background: #0a0c14; }
+    #root { min-height: 100vh; }
+  </style>
+
+  <!-- Libraries (loaded from the web) -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useCallback, useEffect } = React;
+
+/* =========================================================
+   1. SERVICES — names and brand colours
+   ========================================================= */
+const GROUPS = {
+  all:       { name: "All services",   color: "#8b7bff", color2: "#2dd4ff", text: "#ffffff" },
+  apple:     { name: "Apple / iTunes", color: "#fa233b", color2: "#fb5c74", text: "#ffffff" },
+  spotify:   { name: "Spotify",        color: "#1db954", color2: "#13863c", text: "#ffffff" },
+  youtube:   { name: "YouTube",        color: "#ff0033", color2: "#b3001f", text: "#ffffff" },
+  facebook:  { name: "Facebook",       color: "#1877f2", color2: "#0c5ecf", text: "#ffffff" },
+  amazon:    { name: "Amazon",         color: "#ff9900", color2: "#e07b00", text: "#1a1208" },
+  tiktok:    { name: "TikTok",         color: "#fe2c55", color2: "#25f4ee", text: "#ffffff" },
+  pandora:   { name: "Pandora",        color: "#3668ff", color2: "#224bd6", text: "#ffffff" },
+  tidal:     { name: "Tidal",          color: "#00e8e8", color2: "#008f9c", text: "#06181a" },
+  netease:   { name: "NetEase",        color: "#dd001b", color2: "#a30014", text: "#ffffff" },
+  deezer:    { name: "Deezer",         color: "#a238ff", color2: "#7a1fd0", text: "#ffffff" },
+  lyricfind: { name: "LyricFind",      color: "#5b8def", color2: "#3a64c4", text: "#ffffff" },
+  other:     { name: "Other",          color: "#8a93a8", color2: "#5d6678", text: "#ffffff" },
+};
+
+// Maps a raw store name from the report to one of the groups above
+function groupOf(store) {
+  const s = String(store || "").toLowerCase();
+  if (s.includes("apple") || s.includes("itunes")) return "apple";
+  if (s.includes("spotify")) return "spotify";
+  if (s.includes("youtube")) return "youtube";
+  if (s.includes("facebook")) return "facebook";
+  if (s.includes("amazon")) return "amazon";
+  if (s.includes("tiktok")) return "tiktok";
+  if (s.includes("pandora")) return "pandora";
+  if (s.includes("tidal")) return "tidal";
+  if (s.includes("netease")) return "netease";
+  if (s.includes("deezer")) return "deezer";
+  if (s.includes("lyricfind")) return "lyricfind";
+  return "other";
+}
+
+/* Service icons */
+function Glyph({ id, size = 28, color = "#fff" }) {
+  const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true };
+  switch (id) {
+    case "spotify": return (<svg {...p}><circle cx="12" cy="12" r="10" stroke={color} strokeWidth="1.6"/><path d="M7 9.6c3.4-1 7-0.7 10 1" stroke={color} strokeWidth="1.7" strokeLinecap="round"/><path d="M7.6 12.6c2.8-.8 5.8-.5 8.2 1" stroke={color} strokeWidth="1.5" strokeLinecap="round"/><path d="M8.2 15.4c2.2-.6 4.4-.4 6.3.8" stroke={color} strokeWidth="1.3" strokeLinecap="round"/></svg>);
+    case "apple": return (<svg {...p}><path d="M9 17.5V7.2l9-2v9.8" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6.8" cy="17.6" r="2.3" stroke={color} strokeWidth="1.6"/><circle cx="15.8" cy="15.2" r="2.3" stroke={color} strokeWidth="1.6"/></svg>);
+    case "youtube": return (<svg {...p}><rect x="2.5" y="6" width="19" height="12.5" rx="4" stroke={color} strokeWidth="1.7"/><path d="M10.2 9.6l4.6 2.6-4.6 2.6z" fill={color}/></svg>);
+    case "facebook": return (<svg {...p}><path d="M14.5 4.5h-2.2c-1.8 0-3 1.2-3 3.1v2.2H7v2.9h2.3v6.8h3v-6.8h2.4l.5-2.9h-2.9V7.9c0-.5.3-.8.9-.8h2.1z" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/></svg>);
+    case "amazon": return (<svg {...p}><path d="M4.5 15.5c4.6 3.4 10.4 3.4 15 .4" stroke={color} strokeWidth="1.7" strokeLinecap="round"/><path d="M19.5 15.9l.4-2.5-2.4.8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M9.4 9.1c0-1.6 1.2-2.6 2.8-2.6 1.7 0 2.7 1 2.7 2.6v4.4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/><path d="M14.9 10.6c-3.2 0-5.3.8-5.3 2.5 0 1.2.9 1.9 2.1 1.9 1.4 0 2.6-.9 3.2-2.1" stroke={color} strokeWidth="1.6" strokeLinecap="round"/></svg>);
+    case "tiktok": return (<svg {...p}><path d="M13.2 4.5v9.6a3.3 3.3 0 11-3.3-3.3" stroke={color} strokeWidth="1.8" strokeLinecap="round"/><path d="M13.2 6.2c.7 1.9 2.2 3.1 4.3 3.3" stroke={color} strokeWidth="1.8" strokeLinecap="round"/></svg>);
+    case "pandora": return (<svg {...p}><path d="M8 19.5v-15h4.6a4.4 4.4 0 010 8.8H8" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+    case "tidal": return (<svg {...p}><path d="M7 8l2.5 2.5L7 13l-2.5-2.5z" fill={color}/><path d="M12 8l2.5 2.5L12 13l-2.5-2.5z" fill={color}/><path d="M17 8l2.5 2.5L17 13l-2.5-2.5z" fill={color}/><path d="M12 13l2.5 2.5L12 18l-2.5-2.5z" fill={color}/></svg>);
+    case "netease": return (<svg {...p}><circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.6"/><path d="M13.4 6.8l1.6 5.3a3.2 3.2 0 11-4.3 3" stroke={color} strokeWidth="1.7" strokeLinecap="round"/></svg>);
+    case "deezer": return (<svg {...p}>
+      <rect x="3" y="15" width="4" height="2.4" fill={color}/><rect x="3" y="11.4" width="4" height="2.4" fill={color} opacity=".7"/>
+      <rect x="10" y="15" width="4" height="2.4" fill={color}/><rect x="10" y="11.4" width="4" height="2.4" fill={color} opacity=".7"/><rect x="10" y="7.8" width="4" height="2.4" fill={color} opacity=".45"/>
+      <rect x="17" y="15" width="4" height="2.4" fill={color}/><rect x="17" y="11.4" width="4" height="2.4" fill={color} opacity=".7"/><rect x="17" y="7.8" width="4" height="2.4" fill={color} opacity=".45"/><rect x="17" y="4.2" width="4" height="2.4" fill={color} opacity=".3"/></svg>);
+    case "lyricfind": return (<svg {...p}><path d="M9 7c-2 0-3.4 1.4-3.4 3.4 0 1.9 1.3 3.1 3 3.1-.2 1.6-1.2 2.7-2.8 3.3" stroke={color} strokeWidth="1.7" strokeLinecap="round"/><path d="M18 7c-2 0-3.4 1.4-3.4 3.4 0 1.9 1.3 3.1 3 3.1-.2 1.6-1.2 2.7-2.8 3.3" stroke={color} strokeWidth="1.7" strokeLinecap="round"/></svg>);
+    case "all": return (<svg {...p}><circle cx="9" cy="12" r="6.5" stroke={color} strokeWidth="1.6"/><circle cx="15" cy="12" r="6.5" stroke={color} strokeWidth="1.6" opacity=".65"/></svg>);
+    default: return (<svg {...p}><circle cx="12" cy="12" r="8" stroke={color} strokeWidth="1.6"/><circle cx="12" cy="12" r="2" fill={color}/></svg>);
+  }
+}
+
+/* =========================================================
+   2. COUNTRIES — [name, latitude, longitude, map id]
+   The map id is the ISO numeric code used by the world map data.
+   ========================================================= */
+const COUNTRIES = {
+  AE:["United Arab Emirates",24,54,"784"], AR:["Argentina",-34.6,-64,"032"], AT:["Austria",47.5,14.5,"040"],
+  AU:["Australia",-25,134,"036"], BD:["Bangladesh",23.7,90.4,"050"], BE:["Belgium",50.6,4.5,"056"],
+  BG:["Bulgaria",42.7,25.3,"100"], BR:["Brazil",-10,-52,"076"], BY:["Belarus",53.5,28,"112"],
+  CA:["Canada",56,-101,"124"], CH:["Switzerland",46.8,8.2,"756"], CL:["Chile",-33.5,-70.7,"152"],
+  CO:["Colombia",4,-73,"170"], CR:["Costa Rica",9.9,-84.1,"188"], CZ:["Czechia",49.8,15.5,"203"],
+  DE:["Germany",51,10,"276"], DK:["Denmark",56,9.7,"208"], EE:["Estonia",58.7,25.5,"233"],
+  EG:["Egypt",26.5,30,"818"], ES:["Spain",40.2,-3.7,"724"], FI:["Finland",62.5,26,"246"],
+  FR:["France",46.5,2.4,"250"], GB:["United Kingdom",53,-1.8,"826"], GE:["Georgia",42,43.5,"268"],
+  GR:["Greece",39,22.5,"300"], HK:["Hong Kong",22.3,114.2,"344"], HN:["Honduras",14.8,-86.6,"340"],
+  HR:["Croatia",45.3,16,"191"], HU:["Hungary",47.2,19.4,"348"], ID:["Indonesia",-2,118,"360"],
+  IE:["Ireland",53.2,-8,"372"], IL:["Israel",31.5,34.9,"376"], IN:["India",21,78.5,"356"],
+  IS:["Iceland",64.9,-18.6,"352"], IT:["Italy",42.5,12.6,"380"], JP:["Japan",36.5,138.5,"392"],
+  KR:["South Korea",36.4,127.9,"410"], KZ:["Kazakhstan",48,67,"398"], LK:["Sri Lanka",7.6,80.7,"144"],
+  LV:["Latvia",56.9,25,"428"], MA:["Morocco",31.8,-7.1,"504"], MD:["Moldova",47.2,28.5,"498"],
+  MX:["Mexico",23.5,-102,"484"], MY:["Malaysia",3.8,109.5,"458"], NG:["Nigeria",9.1,8.7,"566"],
+  NL:["Netherlands",52.2,5.5,"528"], NO:["Norway",61.5,9,"578"], NZ:["New Zealand",-41.5,173,"554"],
+  PA:["Panama",8.6,-80.4,"591"], PE:["Peru",-9.2,-75,"604"], PH:["Philippines",12.5,122.5,"608"],
+  PK:["Pakistan",30,69.5,"586"], PL:["Poland",52,19.3,"616"], PT:["Portugal",39.6,-8,"620"],
+  RO:["Romania",45.9,25,"642"], RS:["Serbia",44.2,20.9,"688"], SA:["Saudi Arabia",24,45,"682"],
+  SE:["Sweden",62,15,"752"], SG:["Singapore",1.35,103.8,"702"], SK:["Slovakia",48.7,19.5,"703"],
+  TH:["Thailand",15,101,"764"], TN:["Tunisia",34,9.5,"788"], TR:["Turkey",39,35.2,"792"],
+  TW:["Taiwan",23.7,121,"158"], UA:["Ukraine",49,31.4,"804"], US:["United States",39.5,-98.4,"840"],
+  VE:["Venezuela",7.1,-66.2,"862"], VN:["Vietnam",16,107.8,"704"], ZA:["South Africa",-29,24.7,"710"],
+};
+// Reverse lookup: map id -> country code
+const MAPID_TO_CODE = {};
+Object.entries(COUNTRIES).forEach(([code, c]) => { MAPID_TO_CODE[c[3]] = code; });
+const countryName = code => (COUNTRIES[code] ? COUNTRIES[code][0] : code);
+
+/* =========================================================
+   3. HELPERS
+   ========================================================= */
+const MAP_W = 1000, MAP_H = 500;
+const px = lon => (lon + 180) / 360 * MAP_W;   // longitude -> x
+const py = lat => (90 - lat) / 180 * MAP_H;    // latitude  -> y
+
+const fmtMoney = v => "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtNum = v => Math.round(v).toLocaleString("en-US");
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtMonth = m => {
+  if (!/^\d{4}-\d{2}/.test(String(m))) return String(m);
+  const [y, mo] = String(m).split("-");
+  return `${MONTHS[mo - 1] || mo} ${String(y).slice(2)}`;
+};
+
+const REQUIRED = ["sale month", "store", "title", "quantity", "country of sale", "earnings (usd)"];
+
+// Turns any date format (Excel date, "2024-03", "03/2024"...) into "YYYY-MM"
+function toMonth(v) {
+  if (v == null) return "";
+  if (v instanceof Date && !isNaN(v)) return v.getFullYear() + "-" + String(v.getMonth() + 1).padStart(2, "0");
+  if (typeof v === "number" && isFinite(v)) {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return isNaN(d) ? "" : d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0");
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})/);
+  if (m) return m[1] + "-" + m[2].padStart(2, "0");
+  m = s.match(/^(\d{1,2})[-/.](\d{4})/);
+  if (m) return m[2] + "-" + m[1].padStart(2, "0");
+  return s;
+}
+const isMonth = s => /^\d{4}-\d{2}$/.test(s);
+
+function parseRows(raw) {
+  if (!raw.length) throw new Error("The file has no data rows.");
+  const keys = {};
+  Object.keys(raw[0]).forEach(k => (keys[k.trim().toLowerCase()] = k));
+  const missing = REQUIRED.filter(k => !(k in keys));
+  if (missing.length) throw new Error("Missing expected columns: " + missing.join(", "));
+  const get = (r, k) => r[keys[k]];
+  return raw.map(r => ({
+    month: toMonth(get(r, "sale month")),
+    store: String(get(r, "store") || "").trim(),
+    group: groupOf(get(r, "store")),
+    title: String(get(r, "title") || "").trim(),
+    // "Artist" column is optional — blank if the report doesn't have one
+    artist: "artist" in keys ? String(get(r, "artist") || "").trim() : "",
+    country: String(get(r, "country of sale") || "").trim().toUpperCase(),
+    qty: Number(get(r, "quantity")) || 0,
+    earnings: Number(get(r, "earnings (usd)")) || 0,
+  })).filter(r => r.month && r.store);
+}
+
+// Every month from first to last (fills gaps with empty months)
+function buildMonths(list) {
+  const uniq = [...new Set(list)];
+  const good = uniq.filter(isMonth).sort();
+  const bad = uniq.filter(m => !isMonth(m)).sort();
+  if (!good.length) return bad;
+  const out = [];
+  let [y, m] = good[0].split("-").map(Number);
+  const [ey, em] = good[good.length - 1].split("-").map(Number);
+  let guard = 0;
+  while ((y < ey || (y === ey && m <= em)) && guard++ < 600) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return [...out, ...bad];
+}
+
+// Unique artist names, highest earner first
+function artistsOf(rows) {
+  const totals = {};
+  rows.forEach(r => { if (r.artist) totals[r.artist] = (totals[r.artist] || 0) + r.earnings; });
+  return Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+}
+
+// Totals per service group (and per raw store inside each group)
+function summariseGroups(rows) {
+  const groups = {};
+  const totals = { earnings: 0, qty: 0 };
+  rows.forEach(r => {
+    const g = groups[r.group] || (groups[r.group] = { earnings: 0, qty: 0, stores: {} });
+    g.earnings += r.earnings; g.qty += r.qty;
+    const s = g.stores[r.store] || (g.stores[r.store] = { earnings: 0, qty: 0 });
+    s.earnings += r.earnings; s.qty += r.qty;
+    totals.earnings += r.earnings; totals.qty += r.qty;
+  });
+  return { groups, totals };
+}
+
+// Totals per month / country / title
+function summariseDetail(rows) {
+  const byMonth = {}, byCountry = {}, byTitle = {};
+  let earnings = 0, qty = 0;
+  const add = (obj, key, r) => { const o = obj[key] || (obj[key] = { earnings: 0, qty: 0 }); o.earnings += r.earnings; o.qty += r.qty; };
+  rows.forEach(r => {
+    earnings += r.earnings; qty += r.qty;
+    add(byMonth, r.month, r); add(byCountry, r.country, r); add(byTitle, r.title, r);
+  });
+  return { byMonth, byCountry, byTitle, earnings, qty };
+}
+
+/* =========================================================
+   4. THEMES
+   ========================================================= */
+const THEMES = {
+  dark: {
+    bg: "#0a0c14", orbA: "rgba(124,92,255,.32)", orbB: "rgba(45,212,255,.2)", orbC: "rgba(255,77,158,.16)",
+    text: "#eef0f8", sub: "#9aa0b5", faint: "#5d6378", glass: "rgba(255,255,255,.055)", glassStrong: "rgba(255,255,255,.09)",
+    border: "rgba(255,255,255,.12)", borderSoft: "rgba(255,255,255,.07)", shadow: "0 18px 50px rgba(0,0,0,.5)",
+    grid: "rgba(255,255,255,.06)", mapBg: "rgba(10,14,26,.45)", tip: "rgba(12,15,28,.94)",
+    land: "rgba(255,255,255,.075)", landEdge: "rgba(255,255,255,.16)",
+  },
+  light: {
+    bg: "#e9ecf5", orbA: "rgba(124,92,255,.25)", orbB: "rgba(45,180,255,.22)", orbC: "rgba(255,77,158,.14)",
+    text: "#171a2e", sub: "#4d5470", faint: "#8a90a8", glass: "rgba(255,255,255,.5)", glassStrong: "rgba(255,255,255,.72)",
+    border: "rgba(255,255,255,.85)", borderSoft: "rgba(23,26,46,.08)", shadow: "0 18px 50px rgba(40,50,100,.16)",
+    grid: "rgba(23,26,46,.08)", mapBg: "rgba(255,255,255,.35)", tip: "rgba(255,255,255,.96)",
+    land: "rgba(23,26,46,.09)", landEdge: "rgba(23,26,46,.18)",
+  },
+};
+
+function makeCss(T, accent) {
+  return `
+  .nmf-root * { box-sizing: border-box; margin: 0; }
+  .nmf-root { font-family: 'Outfit','Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif;
+    min-height: 100vh; color: ${T.text}; background: ${T.bg}; position: relative; overflow-x: hidden; }
+  .nmf-root::before, .nmf-root::after, .nmf-orb {
+    content: ''; position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0; }
+  .nmf-root::before { width: 55vw; height: 55vw; top: -18vw; left: -12vw; background: ${T.orbA}; animation: drift1 26s ease-in-out infinite alternate; }
+  .nmf-root::after { width: 45vw; height: 45vw; bottom: -15vw; right: -10vw; background: ${T.orbB}; animation: drift2 32s ease-in-out infinite alternate; }
+  .nmf-orb { width: 30vw; height: 30vw; top: 40%; left: 55%; background: ${T.orbC}; animation: drift1 38s ease-in-out infinite alternate-reverse; }
+  @keyframes drift1 { to { transform: translate(6vw, 4vw) scale(1.12); } }
+  @keyframes drift2 { to { transform: translate(-5vw, -4vw) scale(0.92); } }
+  .glass { background: ${T.glass}; border: 1px solid ${T.border};
+    backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    border-radius: 22px; box-shadow: ${T.shadow}; }
+  .nmf-wrap { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 22px 22px 60px; }
+  .nmf-eyebrow { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: ${T.sub}; font-weight: 600; }
+  .nmf-btn { cursor: pointer; border: 1px solid ${T.border}; background: ${T.glass}; color: ${T.text};
+    backdrop-filter: blur(14px); border-radius: 999px; padding: 9px 16px; font: inherit; font-size: 13.5px;
+    font-weight: 600; transition: background .25s, transform .2s, border-color .25s; }
+  .nmf-btn:hover { background: ${T.glassStrong}; transform: translateY(-1px); }
+  .nmf-btn:focus-visible, .nmf-tab:focus-visible, .carousel-card:focus-visible { outline: 2px solid ${accent.color}; outline-offset: 2px; }
+  .nmf-tab { cursor: pointer; border: none; background: transparent; color: ${T.sub}; font: inherit;
+    font-size: 13.5px; font-weight: 600; padding: 9px 18px; border-radius: 999px; transition: all .25s; }
+  .artist-select { font: inherit; font-weight: 700; font-size: 15.5px; letter-spacing: -.01em; color: ${T.text};
+    background: ${T.glass}; border: 1px solid ${T.border}; border-radius: 10px; padding: 3px 26px 3px 9px; cursor: pointer;
+    appearance: none; -webkit-appearance: none; max-width: 240px;
+    background-image: linear-gradient(45deg, transparent 50%, ${T.sub} 50%), linear-gradient(135deg, ${T.sub} 50%, transparent 50%);
+    background-position: calc(100% - 13px) 50%, calc(100% - 8px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+  .artist-select:focus-visible { outline: 2px solid ${accent.color}; outline-offset: 2px; }
+  .artist-select option { color: #171a2e; background: #ffffff; }
+  .nmf-tab.active { background: ${T.glassStrong}; color: ${T.text}; box-shadow: inset 0 0 0 1px ${T.border}; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 14px; }
+  .carousel-card { transition: transform .45s cubic-bezier(.22,1,.36,1), opacity .45s, box-shadow .45s;
+    cursor: pointer; border: none; padding: 0; text-align: left; font: inherit; background: transparent; }
+  .bar-rect { transition: opacity .2s; }
+  .country-dot { cursor: pointer; transition: opacity .25s; }
+  .country-shape { transition: fill .3s; }
+  .country-shape.clickable { cursor: pointer; }
+  .country-shape.clickable:hover { fill: ${accent.color}55; }
+  .map-row { transition: background .2s; }
+  .map-row:hover { background: ${T.glassStrong} !important; }
+  .drawer { animation: drawerIn .45s cubic-bezier(.22,1,.36,1); transform-origin: top; }
+  @keyframes drawerIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+  .fadein { animation: fadeIn .5s ease both; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .map-layout { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(190px, 1fr); gap: 18px; margin-top: 14px; align-items: start; }
+  @media (prefers-reduced-motion: reduce) {
+    .nmf-root *, .nmf-root::before, .nmf-root::after { animation: none !important; transition: none !important; }
+  }
+  @media (max-width: 720px) {
+    .nmf-wrap { padding: 14px 12px 48px; }
+    .hide-sm { display: none; }
+    .map-layout { grid-template-columns: minmax(0, 1fr); }
+  }`;
+}
+
+/* =========================================================
+   5. MAIN APP
+   ========================================================= */
+function App() {
+  const [dark, setDark] = useState(true);
+  const [allRows, setAllRows] = useState(null);       // every row in the file
+  const [artist, setArtist] = useState("");          // selected artist ("" = no Artist column)
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState("overview");
+  const [group, setGroup] = useState("all");
+  const [expanded, setExpanded] = useState(false);
+  const [country, setCountry] = useState(null);      // selected country code, or null for all
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef(null);
+
+  const T = dark ? THEMES.dark : THEMES.light;
+  const accent = GROUPS[group] || GROUPS.all;
+
+  // Keep the page background matching the theme (no band at the edges)
+  useEffect(() => { document.body.style.background = T.bg; }, [T.bg]);
+
+  const loadFile = useCallback(async file => {
+    if (!file) return;
+    setError("");
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const parsed = parseRows(XLSX.utils.sheet_to_json(sheet, { defval: null }));
+      if (!parsed.length) throw new Error("No usable rows found in the file.");
+      setAllRows(parsed); setFileName(file.name);
+      setArtist(artistsOf(parsed)[0] || "");
+      setGroup("all"); setExpanded(false); setCountry(null); setTab("overview");
+    } catch (e) {
+      setError(e.message || "Could not read that file. Export as .xlsx or .csv and try again.");
+    }
+  }, []);
+
+  // Artists found in the "Artist" column (top earner first)
+  const artists = useMemo(() => (allRows ? artistsOf(allRows) : []), [allRows]);
+
+  // All dashboard data is limited to the selected artist
+  const rows = useMemo(() => {
+    if (!allRows) return null;
+    return artist ? allRows.filter(r => r.artist === artist) : allRows;
+  }, [allRows, artist]);
+
+  const switchArtist = a => { setArtist(a); setGroup("all"); setExpanded(false); setCountry(null); };
+
+  // Whole-catalogue numbers (fixed order of services in the carousel)
+  const global = useMemo(() => {
+    if (!rows) return null;
+    const s = summariseGroups(rows);
+    return {
+      ...s,
+      months: buildMonths(rows.map(r => r.month)),
+      groupOrder: Object.keys(s.groups).sort((a, b) => s.groups[b].earnings - s.groups[a].earnings),
+    };
+  }, [rows]);
+
+  // Carousel numbers — limited to the selected country (if one is selected)
+  const carousel = useMemo(() => {
+    if (!rows) return null;
+    return summariseGroups(country ? rows.filter(r => r.country === country) : rows);
+  }, [rows, country]);
+
+  // Map numbers — selected service, all countries (so you can still see the world)
+  const mapData = useMemo(() => {
+    if (!rows) return null;
+    return summariseDetail(group === "all" ? rows : rows.filter(r => r.group === group));
+  }, [rows, group]);
+
+  // Chart + stats numbers — selected service AND selected country
+  const detail = useMemo(() => {
+    if (!rows) return null;
+    return summariseDetail(rows.filter(r =>
+      (group === "all" || r.group === group) && (!country || r.country === country)));
+  }, [rows, group, country]);
+
+  const css = makeCss(T, accent);
+
+  /* ---------- Upload screen ---------- */
+  if (!rows) {
+    return (
+      <div className="nmf-root">
+        <style>{css}</style>
+        <div className="nmf-orb" />
+        <div className="nmf-wrap" style={{ display: "flex", minHeight: "92vh", alignItems: "center", justifyContent: "center" }}>
+          <div className="glass fadein" style={{ maxWidth: 640, width: "100%", padding: "46px 42px", textAlign: "center" }}>
+            <div className="nmf-eyebrow">Streaming royalty dashboard</div>
+            <h1 style={{ fontSize: 34, fontWeight: 700, margin: "12px 0 8px", letterSpacing: "-.02em" }}>Load your report</h1>
+            <p style={{ color: T.sub, fontSize: 15, lineHeight: 1.55, maxWidth: 460, margin: "0 auto" }}>
+              Drop the royalty export from your distributor below. Excel (.xlsx, .xls) and .csv both work — the first sheet is read automatically.
+            </p>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={e => { e.preventDefault(); setDragging(false); loadFile(e.dataTransfer.files[0]); }}
+              onClick={() => fileRef.current && fileRef.current.click()}
+              role="button" tabIndex={0}
+              onKeyDown={e => e.key === "Enter" && fileRef.current && fileRef.current.click()}
+              style={{ margin: "28px 0 14px", padding: "44px 20px", borderRadius: 18, cursor: "pointer",
+                border: `1.5px dashed ${dragging ? accent.color : T.border}`,
+                background: dragging ? T.glassStrong : "transparent", transition: "all .25s" }}>
+              <div style={{ fontSize: 38, lineHeight: 1 }}>⤓</div>
+              <div style={{ fontWeight: 600, marginTop: 10 }}>Drag a file here, or click to browse</div>
+              <div style={{ color: T.faint, fontSize: 13, marginTop: 6 }}>.xlsx · .xls · .csv</div>
+            </div>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={e => loadFile(e.target.files[0])} />
+            {error && <div style={{ color: "#ff6b81", fontSize: 13.5, marginTop: 6 }}>{error}</div>}
+            <div style={{ color: T.faint, fontSize: 12.5, marginTop: 18, lineHeight: 1.6 }}>
+              Expected columns: Sale Month · Store · Title · Quantity · Country of Sale · Earnings (USD) · Artist (optional)
+            </div>
+            <button className="nmf-btn" style={{ marginTop: 22 }} onClick={() => setDark(!dark)}>
+              {dark ? "☀ Light mode" : "● Dark mode"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- Dashboard ---------- */
+  const metric = tab === "listens" ? "qty" : "earnings";
+  const fmt = metric === "earnings" ? fmtMoney : fmtNum;
+
+  return (
+    <div className="nmf-root">
+      <style>{css}</style>
+      <div className="nmf-orb" />
+      <div className="nmf-wrap">
+        <header className="glass" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginRight: "auto" }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center",
+              background: `linear-gradient(135deg, ${GROUPS.all.color}, ${GROUPS.all.color2})`, boxShadow: `0 6px 18px ${GROUPS.all.color}55` }}>
+              <Glyph id="all" size={22} />
+            </div>
+            <div>
+              {artists.length > 1 ? (
+                <select className="artist-select" value={artist} onChange={e => switchArtist(e.target.value)}
+                  aria-label="Choose artist">
+                  {artists.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              ) : (
+                <div style={{ fontWeight: 700, fontSize: 15.5, letterSpacing: "-.01em" }}>
+                  {artists[0] || "Royalty dashboard"}
+                </div>
+              )}
+              <div style={{ color: T.faint, fontSize: 11.5 }}>{fileName}</div>
+            </div>
+          </div>
+          <nav style={{ display: "flex", gap: 2, background: T.glass, borderRadius: 999, padding: 3, border: `1px solid ${T.borderSoft}` }}>
+            {["overview", "earnings", "listens"].map(t => (
+              <button key={t} className={`nmf-tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
+                {t[0].toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </nav>
+          <button className="nmf-btn" onClick={() => setDark(!dark)} title="Toggle theme">{dark ? "☀" : "●"}</button>
+          <button className="nmf-btn hide-sm" onClick={() => { setAllRows(null); setArtist(""); setError(""); }}>Load new file</button>
+        </header>
+
+        {tab === "overview" && <Overview T={T} data={global} rows={rows} />}
+
+        {(tab === "earnings" || tab === "listens") && (
+          <>
+            {country && (
+              <div className="glass fadein" style={{ marginTop: 18, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, borderLeft: `3px solid ${accent.color}` }}>
+                <span style={{ fontSize: 13.5 }}>Showing <b>{countryName(country)}</b> only</span>
+                <button className="nmf-btn" style={{ marginLeft: "auto", padding: "6px 13px" }} onClick={() => setCountry(null)}>‹ All countries</button>
+              </div>
+            )}
+
+            <Carousel T={T} order={global.groupOrder} carousel={carousel} metric={metric} group={group}
+              onSelect={g => { setGroup(g); setExpanded(false); }} expanded={expanded} setExpanded={setExpanded} />
+
+            {expanded && group !== "all" && (
+              <SubStores T={T} def={GROUPS[group]} stores={(carousel.groups[group] || {}).stores || {}}
+                metric={metric} country={country} />
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 18, marginTop: 18 }}>
+              <WorldMap T={T} byCountry={mapData.byCountry} metric={metric} accent={accent} dark={dark}
+                selected={country} onSelect={setCountry} />
+              <MonthBars T={T} months={global.months} byMonth={detail.byMonth} metric={metric} accent={accent} country={country} />
+            </div>
+
+            <div className="glass fadein" style={{ marginTop: 18, padding: "18px 22px", display: "flex", gap: 30, flexWrap: "wrap" }}>
+              <MiniStat T={T} label={metric === "earnings" ? "Earnings shown" : "Listens shown"} value={fmt(detail[metric])} />
+              <MiniStat T={T} label={country ? `Share of ${countryName(country)}` : "Share of total"}
+                value={carousel.totals[metric] ? (detail[metric] / carousel.totals[metric] * 100).toFixed(1) + "%" : "—"} />
+              {country
+                ? <MiniStat T={T} label="Country" value={countryName(country)} />
+                : <MiniStat T={T} label="Countries" value={String(Object.keys(detail.byCountry).length)} />}
+              <MiniStat T={T} label="Tracks" value={String(Object.keys(detail.byTitle).length)} />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ T, label, value }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, letterSpacing: ".18em", textTransform: "uppercase", color: T.sub, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, letterSpacing: "-.02em", color: T.text }}>{value}</div>
+    </div>
+  );
+}
+
+/* =========================================================
+   6. OVERVIEW TAB
+   ========================================================= */
+function Overview({ T, data, rows }) {
+  const [hover, setHover] = useState(null);
+  const months = data.months;
+
+  const perMonth = months.map(m => {
+    let e = 0, q = 0;
+    rows.forEach(r => { if (r.month === m) { e += r.earnings; q += r.qty; } });
+    return { m, e, q };
+  });
+
+  const byTitle = {}, byCountry = {};
+  rows.forEach(r => {
+    const t = byTitle[r.title] || (byTitle[r.title] = { e: 0, q: 0 }); t.e += r.earnings; t.q += r.qty;
+    const c = byCountry[r.country] || (byCountry[r.country] = { e: 0, q: 0 }); c.e += r.earnings; c.q += r.qty;
+  });
+  const topTracks = Object.entries(byTitle).sort((a, b) => b[1].e - a[1].e).slice(0, 5);
+  const topCountry = Object.entries(byCountry).sort((a, b) => b[1].e - a[1].e)[0];
+  const topGroup = data.groupOrder[0];
+  const trackMax = (topTracks[0] && topTracks[0][1].e) || 1;
+
+  // Sparkline geometry (SVG is 560 x 120)
+  const SW = 560, SH = 120;
+  const maxE = Math.max(...perMonth.map(p => p.e), 0.0001);
+  const pts = perMonth.map((p, i) => [
+    perMonth.length > 1 ? (i / (perMonth.length - 1)) * 544 + 8 : SW / 2,
+    106 - (p.e / maxE) * 86,
+  ]);
+  const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const area = line + ` L ${pts[pts.length - 1][0].toFixed(1)} 114 L ${pts[0][0].toFixed(1)} 114 Z`;
+  const step = perMonth.length > 1 ? 544 / (perMonth.length - 1) : SW;
+
+  return (
+    <div className="fadein">
+      <div className="glass" style={{ marginTop: 18, padding: "30px 30px 24px", display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 26, alignItems: "center" }}>
+        <div>
+          <div className="nmf-eyebrow">All time · all services</div>
+          <div style={{ fontSize: "clamp(44px, 7vw, 64px)", fontWeight: 800, letterSpacing: "-.035em", lineHeight: 1.05, marginTop: 8 }}>
+            <span style={{ background: `linear-gradient(95deg, ${T.text} 30%, ${GROUPS.all.color} 70%, ${GROUPS.all.color2})`,
+              WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              {fmtMoney(data.totals.earnings)}
+            </span>
+          </div>
+          <div style={{ color: T.sub, fontSize: 15, marginTop: 6 }}>
+            earned from <b style={{ color: T.text }}>{fmtNum(data.totals.qty)}</b> listens &amp; sales across{" "}
+            <b style={{ color: T.text }}>{Object.keys(byCountry).length}</b> countries
+          </div>
+        </div>
+
+        <div>
+          {/* Line graph with hover tooltip */}
+          <div style={{ position: "relative" }}>
+            <svg viewBox={`0 0 ${SW} ${SH}`} style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}
+              role="img" aria-label="Monthly earnings trend" onMouseLeave={() => setHover(null)}>
+              <defs>
+                <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={GROUPS.all.color} stopOpacity=".45" />
+                  <stop offset="100%" stopColor={GROUPS.all.color2} stopOpacity="0" />
+                </linearGradient>
+                <linearGradient id="sparkline" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor={GROUPS.all.color} />
+                  <stop offset="100%" stopColor={GROUPS.all.color2} />
+                </linearGradient>
+              </defs>
+              <path d={area} fill="url(#sparkfill)" />
+              <path d={line} fill="none" stroke="url(#sparkline)" strokeWidth="2.5" strokeLinecap="round" />
+              {hover != null && (
+                <line x1={pts[hover][0]} y1="6" x2={pts[hover][0]} y2="114" stroke={T.sub} strokeWidth="1" strokeDasharray="3 4" />
+              )}
+              {pts.map((p, i) => (
+                <circle key={i} cx={p[0]} cy={p[1]} r={hover === i ? 6 : 3} fill={GROUPS.all.color2}
+                  stroke={hover === i ? "#fff" : "none"} strokeWidth="2" style={{ transition: "r .15s" }} />
+              ))}
+              {/* invisible hover zones, one per month */}
+              {pts.map((p, i) => (
+                <rect key={"h" + i} x={p[0] - step / 2} y="0" width={step} height={SH} fill="transparent"
+                  style={{ cursor: "pointer" }} onMouseEnter={() => setHover(i)} onClick={() => setHover(i)} />
+              ))}
+            </svg>
+
+            {hover != null && (
+              <div style={{
+                position: "absolute",
+                left: `${Math.min(88, Math.max(12, pts[hover][0] / SW * 100))}%`,
+                top: `${pts[hover][1] / SH * 100}%`,
+                transform: "translate(-50%, calc(-100% - 14px))",
+                background: T.tip, border: `1px solid ${T.border}`, borderRadius: 12, padding: "8px 13px",
+                fontSize: 12.5, pointerEvents: "none", backdropFilter: "blur(8px)",
+                boxShadow: "0 8px 24px rgba(0,0,0,.3)", whiteSpace: "nowrap", zIndex: 3, color: T.text }}>
+                <b>{fmtMonth(perMonth[hover].m)}</b>
+                <div style={{ color: T.sub, marginTop: 2 }}>
+                  {fmtMoney(perMonth[hover].e)} · {fmtNum(perMonth[hover].q)} plays
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", color: T.faint, fontSize: 11.5, padding: "2px 8px 0" }}>
+            <span>{fmtMonth(months[0])}</span>
+            <span>monthly earnings · hover for details</span>
+            <span>{fmtMonth(months[months.length - 1])}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="stat-grid" style={{ marginTop: 16 }}>
+        <StatCard T={T} label="Top service" value={(GROUPS[topGroup] || {}).name || "—"}
+          sub={fmtMoney((data.groups[topGroup] || {}).earnings || 0)} color={(GROUPS[topGroup] || {}).color} glyph={topGroup} />
+        <StatCard T={T} label="Top country" value={topCountry ? countryName(topCountry[0]) : "—"}
+          sub={fmtMoney(topCountry ? topCountry[1].e : 0)} color={GROUPS.all.color2} />
+        <StatCard T={T} label="Top track" value={topTracks[0] ? topTracks[0][0] : "—"}
+          sub={fmtMoney(topTracks[0] ? topTracks[0][1].e : 0)} color={GROUPS.all.color} />
+        <StatCard T={T} label="Catalog" value={`${Object.keys(byTitle).length} tracks`}
+          sub={`${months.length} months reported`} color="#ff4d9e" />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, marginTop: 16 }}>
+        <div className="glass" style={{ padding: "20px 22px" }}>
+          <div className="nmf-eyebrow">Top tracks by earnings</div>
+          <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+            {topTracks.map(([title, v], i) => (
+              <div key={title}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 5, gap: 10 }}>
+                  <span style={{ fontWeight: 600 }}>{i + 1}. {title}</span>
+                  <span style={{ color: T.sub, whiteSpace: "nowrap" }}>{fmtMoney(v.e)} · {fmtNum(v.q)} listens</span>
+                </div>
+                <div style={{ height: 7, borderRadius: 99, background: T.grid, overflow: "hidden" }}>
+                  <div style={{ width: `${v.e / trackMax * 100}%`, height: "100%", borderRadius: 99,
+                    background: `linear-gradient(90deg, ${GROUPS.all.color}, ${GROUPS.all.color2})` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass" style={{ padding: "20px 22px" }}>
+          <div className="nmf-eyebrow">Service mix</div>
+          <div style={{ marginTop: 14, display: "grid", gap: 11 }}>
+            {data.groupOrder.slice(0, 7).map(id => {
+              const def = GROUPS[id], g = data.groups[id];
+              const pct = data.totals.earnings ? g.earnings / data.totals.earnings * 100 : 0;
+              return (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", flexShrink: 0,
+                    background: `linear-gradient(135deg, ${def.color}, ${def.color2})` }}>
+                    <Glyph id={id} size={17} color={def.text} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600 }}>{def.name}</span>
+                      <span style={{ color: T.sub }}>{pct.toFixed(1)}%</span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 99, background: T.grid, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: def.color, borderRadius: 99 }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ color: T.faint, fontSize: 12, marginTop: 14 }}>
+            Open the Earnings or Listens tab to explore each service in the carousel.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ T, label, value, sub, color, glyph }) {
+  return (
+    <div className="glass" style={{ padding: "16px 18px", position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", inset: "auto -30px -40px auto", width: 110, height: 110, borderRadius: "50%",
+        background: color, opacity: 0.14, filter: "blur(26px)" }} />
+      <div className="nmf-eyebrow" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        {glyph && <Glyph id={glyph} size={14} color={color} />} {label}
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 700, marginTop: 8, letterSpacing: "-.01em",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+      <div style={{ color: T.sub, fontSize: 12.5, marginTop: 3 }}>{sub}</div>
+    </div>
+  );
+}
+
+/* =========================================================
+   7. SERVICE CAROUSEL
+   ========================================================= */
+function Carousel({ T, order, carousel, metric, group, onSelect, expanded, setExpanded }) {
+  const ids = ["all", ...order];
+  const index = Math.max(0, ids.indexOf(group));
+  const fmt = metric === "earnings" ? fmtMoney : fmtNum;
+  const move = d => onSelect(ids[Math.min(ids.length - 1, Math.max(0, index + d))]);
+  const CARD = 240, GAP = 16;
+
+  return (
+    <div className="fadein" style={{ marginTop: 18, position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px 10px" }}>
+        <div className="nmf-eyebrow">Streaming services — select to filter</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="nmf-btn" aria-label="Previous service" onClick={() => move(-1)} style={{ padding: "6px 13px" }}>‹</button>
+          <button className="nmf-btn" aria-label="Next service" onClick={() => move(1)} style={{ padding: "6px 13px" }}>›</button>
+        </div>
+      </div>
+
+      <div style={{ overflow: "hidden", padding: "10px 0 6px",
+        maskImage: "linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent)",
+        WebkitMaskImage: "linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent)" }}>
+        <div style={{ display: "flex", gap: GAP,
+          transform: `translateX(calc(50% - ${CARD / 2}px - ${index * (CARD + GAP)}px))`,
+          transition: "transform .55s cubic-bezier(.22,1,.36,1)", willChange: "transform" }}>
+          {ids.map((id, i) => {
+            const def = GROUPS[id];
+            const g = id === "all" ? carousel.totals : (carousel.groups[id] || { earnings: 0, qty: 0, stores: {} });
+            const stores = id === "all" ? [] : Object.keys(g.stores || {});
+            const active = i === index;
+            const pct = carousel.totals[metric] ? g[metric] / carousel.totals[metric] * 100 : 0;
+            return (
+              <button key={id} className="carousel-card" aria-pressed={active}
+                onClick={() => (active && stores.length > 1 ? setExpanded(!expanded) : onSelect(id))}
+                style={{ flex: `0 0 ${CARD}px`, height: 290, borderRadius: 24, position: "relative",
+                  transform: active ? "scale(1)" : "scale(.9)", opacity: active ? 1 : 0.55, color: def.text }}>
+                <div style={{ position: "absolute", inset: 0, borderRadius: 24, overflow: "hidden",
+                  background: `linear-gradient(150deg, ${def.color}cc 0%, ${def.color2}b8 100%)`,
+                  border: "1px solid rgba(255,255,255,.35)", backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)",
+                  boxShadow: active ? `0 22px 55px ${def.color}55, inset 0 1px 0 rgba(255,255,255,.45)` : "0 10px 28px rgba(0,0,0,.25)" }}>
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(115deg, rgba(255,255,255,.4) 0%, rgba(255,255,255,.06) 26%, rgba(255,255,255,0) 50%, rgba(255,255,255,.14) 78%, rgba(255,255,255,0) 100%)" }} />
+                  <div style={{ position: "absolute", width: 220, height: 220, borderRadius: "50%", top: -90, right: -70, background: "rgba(255,255,255,.22)", filter: "blur(34px)" }} />
+                </div>
+                <div style={{ position: "relative", height: "100%", padding: "20px 20px 18px", display: "flex", flexDirection: "column" }}>
+                  <div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center",
+                    background: "rgba(255,255,255,.2)", border: "1px solid rgba(255,255,255,.35)", backdropFilter: "blur(8px)" }}>
+                    <Glyph id={id} size={26} color={def.text} />
+                  </div>
+                  <div style={{ fontSize: 19, fontWeight: 750, marginTop: 14, letterSpacing: "-.015em" }}>{def.name}</div>
+                  <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+                    {id === "all" ? `${order.length} services` : stores.length > 1 ? `${stores.length} sub-stores` : stores[0] || "No sales here"}
+                  </div>
+                  <div style={{ marginTop: "auto" }}>
+                    <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" }}>{fmt(g[metric])}</div>
+                    <div style={{ fontSize: 12, opacity: 0.85 }}>
+                      {metric === "earnings" ? "earnings" : "listens"} · {pct.toFixed(1)}% of total
+                    </div>
+                    {active && stores.length > 1 && (
+                      <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6,
+                        background: "rgba(255,255,255,.22)", border: "1px solid rgba(255,255,255,.4)", padding: "6px 12px", borderRadius: 99 }}>
+                        {expanded ? "Hide sub-stores ▴" : "Break down sub-stores ▾"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "center", gap: 7, marginTop: 10 }}>
+        {ids.map((id, i) => (
+          <button key={id} onClick={() => onSelect(id)} aria-label={GROUPS[id].name}
+            style={{ width: i === index ? 22 : 7, height: 7, borderRadius: 99, border: "none", cursor: "pointer",
+              background: i === index ? GROUPS[id].color : T.grid, transition: "all .35s", padding: 0 }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SubStores({ T, def, stores, metric, country }) {
+  const list = Object.entries(stores).sort((a, b) => b[1][metric] - a[1][metric]);
+  const max = (list[0] && list[0][1][metric]) || 1;
+  return (
+    <div className="glass drawer" style={{ marginTop: 14, padding: "18px 22px", borderLeft: `3px solid ${def.color}` }}>
+      <div className="nmf-eyebrow" style={{ color: def.color }}>
+        {def.name} — sub-store breakdown{country ? ` · ${countryName(country)}` : ""}
+      </div>
+      {!list.length && <div style={{ color: T.sub, fontSize: 13.5, marginTop: 12 }}>No sales in this country.</div>}
+      <div style={{ marginTop: 13, display: "grid", gap: 11 }}>
+        {list.map(([name, v]) => (
+          <div key={name}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 5, gap: 12 }}>
+              <span style={{ fontWeight: 600 }}>{name}</span>
+              <span style={{ color: T.sub, whiteSpace: "nowrap" }}>{fmtMoney(v.earnings)} · {fmtNum(v.qty)} listens</span>
+            </div>
+            <div style={{ height: 7, borderRadius: 99, background: T.grid, overflow: "hidden" }}>
+              <div style={{ width: `${v[metric] / max * 100}%`, height: "100%", borderRadius: 99,
+                background: `linear-gradient(90deg, ${def.color}, ${def.color2})` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   8. WORLD MAP — click a country to filter + zoom in
+   ========================================================= */
+let worldCache = null, worldPromise = null;
+function loadWorld() {
+  if (worldCache) return Promise.resolve(worldCache);
+  if (!worldPromise) {
+    worldPromise = fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json")
+      .then(r => { if (!r.ok) throw new Error("fetch failed"); return r.json(); })
+      .then(topo => (worldCache = topojson.feature(topo, topo.objects.countries).features))
+      .catch(() => null);
+  }
+  return worldPromise;
+}
+
+// Converts one country's shape into an SVG path, and finds the box around its main landmass
+function shapeOf(geometry) {
+  if (!geometry) return null;
+  const polys = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  let d = "", best = null, bestArea = -1;
+  polys.forEach(poly => {
+    poly.forEach(ring => {
+      d += ring.map((pt, i) => (i ? "L" : "M") + px(pt[0]).toFixed(1) + " " + py(pt[1]).toFixed(1)).join("") + "Z";
+    });
+    const outer = poly[0].map(pt => [px(pt[0]), py(pt[1])]);
+    let area = 0;
+    for (let i = 0; i < outer.length; i++) {
+      const [x1, y1] = outer[i], [x2, y2] = outer[(i + 1) % outer.length];
+      area += x1 * y2 - x2 * y1;
+    }
+    area = Math.abs(area / 2);
+    if (area > bestArea) {
+      bestArea = area;
+      const xs = outer.map(p => p[0]), ys = outer.map(p => p[1]);
+      best = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+    }
+  });
+  return { d, box: best };
+}
+
+function WorldMap({ T, byCountry, metric, accent, dark, selected, onSelect }) {
+  const [hover, setHover] = useState(null);
+  const [world, setWorld] = useState(worldCache);
+  const [vb, setVb] = useState([0, 0, MAP_W, MAP_H]);   // current zoom box
+  const vbRef = useRef(vb);
+  vbRef.current = vb;
+
+  useEffect(() => {
+    if (world) return;
+    let live = true;
+    loadWorld().then(f => { if (live && f) setWorld(f); });
+    return () => { live = false; };
+  }, [world]);
+
+  // Pre-build every country's path once
+  const shapes = useMemo(() => {
+    if (!world) return [];
+    return world.map(f => ({ id: f.id, ...(shapeOf(f.geometry) || {}) })).filter(s => s.d);
+  }, [world]);
+  const shapeById = useMemo(() => {
+    const m = {}; shapes.forEach(s => (m[s.id] = s)); return m;
+  }, [shapes]);
+
+  // Work out where to zoom to
+  const targetBox = useCallback(code => {
+    if (!code || !COUNTRIES[code]) return [0, 0, MAP_W, MAP_H];
+    const [, lat, lon, mapId] = COUNTRIES[code];
+    const s = shapeById[mapId];
+    let cx, cy, bw, bh;
+    if (s && s.box) {
+      cx = (s.box.x0 + s.box.x1) / 2; cy = (s.box.y0 + s.box.y1) / 2;
+      bw = s.box.x1 - s.box.x0; bh = s.box.y1 - s.box.y0;
+    } else {
+      cx = px(lon); cy = py(lat); bw = bh = 8;   // tiny places like Singapore / Hong Kong
+    }
+    let w = Math.min(MAP_W, Math.max(bw * 2.4, bh * 2.4 * 2, 70));
+    const h = w / 2;
+    const x = Math.min(MAP_W - w, Math.max(0, cx - w / 2));
+    const y = Math.min(MAP_H - h, Math.max(0, cy - h / 2));
+    return [x, y, w, h];
+  }, [shapeById]);
+
+  // Smoothly animate the zoom
+  useEffect(() => {
+    const from = vbRef.current, to = targetBox(selected);
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) { setVb(to); return; }
+    const start = performance.now(), dur = 700;
+    let raf;
+    const tick = now => {
+      const t = Math.min(1, (now - start) / dur);
+      const e = 1 - Math.pow(1 - t, 3);
+      setVb(from.map((v, i) => v + (to[i] - v) * e));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [selected, targetBox]);
+
+  const k = vb[2] / MAP_W;   // zoom factor, used to keep bubbles a sensible size
+  const mapped = Object.entries(byCountry).filter(([c]) => COUNTRIES[c]);
+  const unmapped = Object.entries(byCountry).filter(([c]) => !COUNTRIES[c]);
+  const max = Math.max(...mapped.map(([, v]) => v[metric]), 0.000001);
+  const top = [...mapped].sort((a, b) => b[1][metric] - a[1][metric]).slice(0, 8);
+  const fmt = metric === "earnings" ? fmtMoney : fmtNum;
+  const selShape = selected && COUNTRIES[selected] ? shapeById[COUNTRIES[selected][3]] : null;
+  const selValue = selected ? byCountry[selected] : null;
+
+  const pick = code => onSelect(code === selected ? null : code);
+  const showTip = (code, v) => {
+    const [name, lat, lon] = COUNTRIES[code];
+    setHover({ code, name, x: px(lon), y: py(lat), v });
+  };
+
+  return (
+    <div className="glass fadein" style={{ padding: "20px 22px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div className="nmf-eyebrow">
+          {metric === "earnings" ? "Earnings" : "Listens"} by country{selected ? ` · ${countryName(selected)}` : ""}
+        </div>
+        <div style={{ color: T.faint, fontSize: 12 }}>
+          {selected ? "Click the country again or use Back to zoom out" : `${mapped.length} countries · click a country to filter`}
+        </div>
+      </div>
+
+      <div className="map-layout">
+        <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", background: T.mapBg, border: `1px solid ${T.borderSoft}` }}>
+          <svg viewBox={vb.map(n => n.toFixed(2)).join(" ")} style={{ width: "100%", height: "auto", display: "block", aspectRatio: "2 / 1" }}
+            role="img" aria-label="World map of activity">
+            <defs>
+              <radialGradient id="bubbleGrad">
+                <stop offset="0%" stopColor={accent.color2} />
+                <stop offset="100%" stopColor={accent.color} />
+              </radialGradient>
+            </defs>
+
+            {/* grid */}
+            {Array.from({ length: 11 }, (_, i) => (
+              <line key={"v" + i} x1={(i + 1) * (MAP_W / 12)} y1="0" x2={(i + 1) * (MAP_W / 12)} y2={MAP_H}
+                stroke={T.grid} strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            ))}
+            {Array.from({ length: 5 }, (_, i) => (
+              <line key={"h" + i} x1="0" y1={(i + 1) * (MAP_H / 6)} x2={MAP_W} y2={(i + 1) * (MAP_H / 6)}
+                stroke={T.grid} strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            ))}
+
+            {/* countries */}
+            {shapes.map(s => {
+              const code = MAPID_TO_CODE[s.id];
+              const clickable = code && byCountry[code];
+              if (selected && code === selected) return null;   // drawn on top below
+              return (
+                <path key={s.id} d={s.d} className={`country-shape ${clickable ? "clickable" : ""}`}
+                  fill={T.land} stroke={T.landEdge} strokeWidth="0.7" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                  onClick={clickable ? () => pick(code) : undefined}
+                  onMouseEnter={clickable ? () => showTip(code, byCountry[code]) : undefined}
+                  onMouseLeave={clickable ? () => setHover(null) : undefined} />
+              );
+            })}
+
+            {/* selected country — filled + outlined in the service colour */}
+            {selShape && (
+              <path d={selShape.d} fill={accent.color} fillOpacity="0.6" stroke={accent.color} strokeWidth="2"
+                strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                style={{ filter: `drop-shadow(0 0 ${6 * k}px ${accent.color})`, cursor: "pointer" }}
+                onClick={() => pick(selected)} />
+            )}
+
+            {/* bubbles */}
+            {mapped.map(([code, v]) => {
+              if (selected === code && selShape) return null;   // the filled shape replaces the bubble
+              const [name, lat, lon] = COUNTRIES[code];
+              const x = px(lon), y = py(lat);
+              const r = (4 + Math.sqrt(v[metric] / max) * 30) * (selected ? Math.max(k, 0.35) : 1);
+              const isHover = hover && hover.code === code;
+              const dim = selected ? selected !== code : hover && !isHover;
+              return (
+                <g key={code}>
+                  <circle cx={x} cy={y} r={r * 1.9} fill={accent.color} opacity={isHover ? 0.18 : 0.07} pointerEvents="none" />
+                  <circle className="country-dot" cx={x} cy={y} r={isHover ? r * 1.18 : r} fill="url(#bubbleGrad)"
+                    stroke="rgba(255,255,255,.55)" strokeWidth="1" vectorEffect="non-scaling-stroke"
+                    opacity={dim ? 0.35 : 0.92}
+                    onClick={() => pick(code)}
+                    onMouseEnter={() => showTip(code, v)} onMouseLeave={() => setHover(null)} />
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Back button */}
+          {selected && (
+            <button className="nmf-btn" onClick={() => onSelect(null)}
+              style={{ position: "absolute", top: 10, left: 10, padding: "6px 13px", fontSize: 12.5, zIndex: 3,
+                background: T.tip }}>
+              ‹ Back
+            </button>
+          )}
+
+          {/* Selected country label */}
+          {selected && selValue && (
+            <div style={{ position: "absolute", right: 10, bottom: 10, background: T.tip, border: `1px solid ${T.border}`,
+              borderRadius: 12, padding: "8px 13px", fontSize: 12.5, zIndex: 2, borderLeft: `3px solid ${accent.color}` }}>
+              <b>{countryName(selected)}</b>
+              <div style={{ color: T.sub }}>{fmtMoney(selValue.earnings)} · {fmtNum(selValue.qty)} listens</div>
+            </div>
+          )}
+
+          {/* Hover tooltip */}
+          {hover && hover.code !== selected && (() => {
+            const lx = (hover.x - vb[0]) / vb[2] * 100, ly = (hover.y - vb[1]) / vb[3] * 100;
+            if (lx < 0 || lx > 100 || ly < 0 || ly > 100) return null;
+            return (
+              <div style={{ position: "absolute", left: `${Math.min(86, Math.max(14, lx))}%`, top: `${Math.max(2, ly - 16)}%`,
+                transform: "translateX(-50%)", background: T.tip, border: `1px solid ${T.border}`, borderRadius: 12,
+                padding: "8px 13px", fontSize: 12.5, pointerEvents: "none", backdropFilter: "blur(8px)",
+                boxShadow: "0 8px 24px rgba(0,0,0,.3)", whiteSpace: "nowrap", zIndex: 2 }}>
+                <b>{hover.name}</b>
+                <div style={{ color: T.sub }}>{fmtMoney(hover.v.earnings)} · {fmtNum(hover.v.qty)} listens</div>
+              </div>
+            );
+          })()}
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 10 }}>
+            Top countries
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {top.map(([code, v], i) => (
+              <div key={code} className="map-row" role="button" tabIndex={0}
+                onClick={() => pick(code)} onKeyDown={e => e.key === "Enter" && pick(code)}
+                onMouseEnter={() => showTip(code, v)} onMouseLeave={() => setHover(null)}
+                style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, padding: "7px 11px",
+                  borderRadius: 11, cursor: "pointer",
+                  background: selected === code ? `${accent.color}33` : (hover && hover.code === code ? T.glassStrong : T.glass),
+                  border: `1px solid ${selected === code ? accent.color : T.borderSoft}` }}>
+                <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ color: accent.color, marginRight: 7 }}>{i + 1}</span>{COUNTRIES[code][0]}
+                </span>
+                <span style={{ color: T.sub, whiteSpace: "nowrap" }}>{fmt(v[metric])}</span>
+              </div>
+            ))}
+            {unmapped.length > 0 && (
+              <div style={{ color: T.faint, fontSize: 11.5, marginTop: 4 }}>
+                + {unmapped.length} unmapped region{unmapped.length > 1 ? "s" : ""} ({unmapped.map(([c]) => c).join(", ")})
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   9. MONTHLY BAR CHART
+   ========================================================= */
+function MonthBars({ T, months, byMonth, metric, accent, country }) {
+  const [hover, setHover] = useState(null);
+  const W = 1000, H = 300, padL = 56, padR = 14, padT = 18, padB = 38;
+  const vals = months.map(m => (byMonth[m] ? byMonth[m][metric] : 0));
+  const max = Math.max(...vals, 0.000001);
+  const bw = (W - padL - padR) / months.length;
+  const ch = H - padT - padB;
+  const fmt = metric === "earnings" ? fmtMoney : fmtNum;
+
+  return (
+    <div className="glass fadein" style={{ padding: "20px 22px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div className="nmf-eyebrow">
+          {metric === "earnings" ? "Earnings" : "Listens"} over time{country ? ` · ${countryName(country)}` : ""}
+        </div>
+        {hover != null && (
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            {fmtMonth(months[hover])} — <span style={{ color: accent.color }}>{fmt(vals[hover])}</span>
+          </div>
+        )}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", marginTop: 8 }} role="img" aria-label="Monthly bar chart">
+        <defs>
+          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={accent.color2} />
+            <stop offset="100%" stopColor={accent.color} />
+          </linearGradient>
+        </defs>
+        {Array.from({ length: 5 }, (_, i) => {
+          const v = (max / 4) * i, y = padT + ch - (v / max) * ch;
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={T.grid} strokeWidth="1" />
+              <text x={padL - 9} y={y + 4} textAnchor="end" fontSize="11.5" fill={T.faint}>
+                {metric === "earnings" ? "$" + (v >= 10 ? v.toFixed(0) : v.toFixed(1)) : fmtNum(v)}
+              </text>
+            </g>
+          );
+        })}
+        {months.map((m, i) => {
+          const h = (vals[i] / max) * ch;
+          const x = padL + i * bw + bw * 0.18, y = padT + ch - h;
+          return (
+            <g key={m} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              <rect x={padL + i * bw} y={padT} width={bw} height={ch} fill="transparent" />
+              <rect className="bar-rect" x={x} y={y} width={bw * 0.64} height={Math.max(h, 2)} rx={Math.min(7, bw * 0.2)}
+                fill="url(#barGrad)" opacity={hover == null || hover === i ? 1 : 0.45}
+                style={{ filter: hover === i ? `drop-shadow(0 0 10px ${accent.color}aa)` : "none" }} />
+              <text x={padL + i * bw + bw / 2} y={H - padB + 20} textAnchor="middle" fontSize="11.5"
+                fill={hover === i ? T.text : T.faint} fontWeight={hover === i ? 700 : 400}>{fmtMonth(m)}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/* =========================================================
+   10. START
+   ========================================================= */
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
